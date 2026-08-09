@@ -190,6 +190,9 @@ class Snapshot:
     classification_config_sha256: str
     repositories: Mapping[int, SnapshotEntry]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "repositories", MappingProxyType(dict(self.repositories)))
+
     @property
     def stars_by_repo(self) -> Mapping[int, int]:
         return MappingProxyType({repo_id: entry.stars for repo_id, entry in self.repositories.items()})

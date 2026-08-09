@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from skill_radar.config import ConfigError, load_category_rules, load_search_queries
-from skill_radar.models import CategoryRule
+from skill_radar.models import CategoryRule, Snapshot, SnapshotEntry
 
 
 def test_loads_required_categories_and_queries():
@@ -26,3 +26,14 @@ def test_category_rule_weights_are_immutable():
     rule = CategoryRule("艺术", 6, 3, (), (), (), (), {"name": 5})
     with pytest.raises(TypeError):
         rule.weights["name"] = 1
+
+
+def test_snapshot_copies_repository_mapping_from_caller():
+    repositories = {
+        1: SnapshotEntry(10, "2026-08-09", (), "digest", (), "2026-08-09T00:00:00Z")
+    }
+    snapshot = Snapshot("2026-08-09T00:00:00Z", "config-digest", repositories)
+    repositories[1] = SnapshotEntry(20, "2026-08-09", (), "digest", (), "2026-08-09T00:00:00Z")
+
+    assert snapshot.repositories[1].stars == 10
+    assert snapshot.stars_by_repo == {1: 10}
