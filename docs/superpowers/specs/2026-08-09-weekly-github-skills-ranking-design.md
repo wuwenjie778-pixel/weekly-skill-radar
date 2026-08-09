@@ -22,6 +22,7 @@
 - Markdown 历史周报和最新周报
 - GitHub Actions 定时及手动运行
 - 自动提交报告和状态更新
+- 使用只读公开搜索令牌发现全 GitHub 候选
 - 自动化测试和本地运行说明
 
 ### 不包含
@@ -67,7 +68,7 @@ weekly_star_growth = current_total_stars - previous_total_stars
 每次运行按以下顺序进行：
 
 1. 加载分类配置、候选索引和上次成功快照。
-2. 通过多组分页搜索发现新候选，与已有候选去重合并。
+2. 使用 `PUBLIC_GITHUB_TOKEN` 通过多组分页搜索发现新候选，与已有候选去重合并。
 3. 获取候选仓库元数据和 `SKILL.md` 内容。
 4. 移除确认已删除、转为私有或不再包含 `SKILL.md` 的候选；暂时性网络失败不触发删除。
 5. 计算当前总 Star 与上次成功快照的差值。
@@ -79,6 +80,8 @@ weekly_star_growth = current_total_stars - previous_total_stars
 ## 6. 候选发现策略
 
 GitHub Code Search 单条查询存在结果上限，且不能可靠地按仓库创建时间切片。发现器使用多组可配置查询并合并分页结果：通用的 `filename:SKILL.md` 查询用于获取最相关和最近索引的结果；Agent、Codex、Claude 等生态词查询用于扩大通用 Skill 覆盖；design、art、Photoshop、Illustrator 等领域词查询用于提高专业榜覆盖。所有查询均面向全部公开所有者，不限定组织或仓库白名单。搜索结果只用于增加候选，历史候选不会因某次搜索没有返回而立即消失。
+
+GitHub 公开代码搜索接口要求认证，而 Actions 内置 `GITHUB_TOKEN` 的授权范围限于当前仓库。部署时必须创建一个只用于公开资源读取的 GitHub 访问令牌，并保存为 Actions Secret `PUBLIC_GITHUB_TOKEN`。该令牌用于搜索和读取其他公开仓库；内置 `GITHUB_TOKEN` 仅用于读取和提交当前榜单仓库。两个令牌不得互换用途。
 
 为控制 API 用量：
 
@@ -136,13 +139,16 @@ GitHub Actions 工作流支持：
 - `workflow_dispatch` 手动触发；
 - 并发锁：同一时间只允许一个榜单任务更新状态；
 - 最小权限：仅授予 `contents: write`；
-- 使用 Actions 内置 `GITHUB_TOKEN`，不要求用户配置额外密钥；
+- 使用 Secret `PUBLIC_GITHUB_TOKEN` 搜索和读取全 GitHub 公开仓库；该令牌不得授予私有仓库访问权或写权限；
+- 使用 Actions 内置 `GITHUB_TOKEN` 提交当前仓库，且不将它用于全 GitHub 发现；
+- 日志、异常和报告不得输出任何令牌值；
 - 固定 Python 主版本和依赖版本，降低环境漂移风险；
 - 仅当测试、采集和报告校验全部成功后提交文件。
 
 ## 10. 错误处理
 
 - 网络错误、5xx 和允许重试的限流响应采用带抖动的指数退避。
+- `PUBLIC_GITHUB_TOKEN` 缺失或认证失败时立即终止，并输出不含令牌内容的配置提示。
 - 单仓库暂时读取失败时保留其历史状态，本次不参与需要最新数据的排行，并在报告中记警告。
 - 只有明确的 404、仓库私有化或确认缺少 `SKILL.md` 才将候选标记失效。
 - 核心搜索完全失败、旧快照无法解析、结果校验失败或 API 配额无法恢复时，工作流失败且不覆盖上一期有效报告和快照。
@@ -170,7 +176,7 @@ GitHub Actions 工作流支持：
 2. 手动运行能建立基线并生成四类 Markdown 榜单。
 3. 第二次使用测试快照运行时能正确计算周增长并排序。
 4. GitHub Actions 工作流具备每周定时、手动触发、最小写权限和自动提交能力。
-5. README 清楚说明部署、首次运行、调整分类词和排障方法。
+5. README 清楚说明如何创建最小权限的只读公开 GitHub Token、配置 `PUBLIC_GITHUB_TOKEN` Secret、部署、首次运行、调整分类词和排障。
 
 ## 12. 已知限制
 
