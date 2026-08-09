@@ -115,3 +115,21 @@ def test_category_lists_require_actual_matches_allow_duplicates_and_apply_limits
         CategoryMatch("photoshop", 10, ("ps",)),
         CategoryMatch("illustrator", 10, ("ai",)),
     )
+
+
+def test_duplicate_repository_ids_appear_once_in_every_eligible_list(record_factory):
+    """Catches duplicate input records becoming duplicate ranking entries."""
+    first = record_factory(repo_id=7, full_name="owner/first", stars=100)
+    duplicate = record_factory(repo_id=7, full_name="owner/duplicate", stars=200)
+    matches = {
+        7: {
+            "art_design": CategoryMatch("art_design", 10, ("art",)),
+            "photoshop": CategoryMatch("photoshop", 10, ("ps",)),
+        }
+    }
+
+    result = build_rankings([first, duplicate], {7: 0}, matches)
+
+    assert [item.full_name for item in result.overall] == ["owner/first"]
+    assert [item.repo_id for item in result.art_design] == [7]
+    assert [item.repo_id for item in result.photoshop] == [7]

@@ -46,11 +46,17 @@ def build_rankings(
     previous_stars: Mapping[int, int],
     matches: Mapping[int, Mapping[str, CategoryMatch]],
 ) -> Rankings:
-    """Build bounded overall and professional rankings for one collection run."""
+    """Build bounded rankings, retaining the first record for each repository ID."""
     baseline = not previous_stars
+    unique_records: list[RepositoryRecord] = []
+    seen_repo_ids: set[int] = set()
+    for record in records:
+        if record.repo_id not in seen_repo_ids:
+            unique_records.append(record)
+            seen_repo_ids.add(record.repo_id)
     ranked = [
         _ranked_record(record, previous_stars, matches.get(record.repo_id, {}))
-        for record in records
+        for record in unique_records
     ]
     ordered = tuple(sorted(ranked, key=lambda item: _sort_key(item, baseline)))
 
