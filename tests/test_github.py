@@ -1,4 +1,5 @@
 import json
+import traceback
 from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
@@ -297,22 +298,32 @@ def test_exhausted_rate_limit_reset_does_not_sleep_after_terminal_response(fake_
     assert len(fake_session.requests) == 4
 
 
-def test_sanitized_failures_do_not_chain_transport_or_raw_json_secrets(fake_session):
-    """Catches error chaining that exposes credentials in transport errors or response bodies."""
-    fake_session.queue_exceptions(requests.ConnectionError("Authorization: Bearer secret-value"))
-    fake_session.queue_exceptions(requests.ConnectionError("Authorization: Bearer secret-value"))
-    fake_session.queue_exceptions(requests.ConnectionError("Authorization: Bearer secret-value"))
-    fake_session.queue_exceptions(requests.ConnectionError("Authorization: Bearer secret-value"))
+def test_sanitized_transport_failure_has_no_secret_context(fake_session):
+    """Catches a hidden transport exception retaining Authorization data through __context__."""
+    token = "secret" + "-value"
+    transport_message = f"Authorization: Bearer {token}"
+    fake_session.queue_exceptions(*(requests.ConnectionError(transport_message) for _ in range(4)))
     with pytest.raises(GitHubError) as transport_error:
-        GitHubClient("secret-value", session=fake_session, sleep=lambda _: None).search_code("filename:SKILL.md", 1)
+        GitHubClient(token, session=fake_session, sleep=lambda _: None).search_code("filename:SKILL.md", 1)
     assert transport_error.value.__cause__ is None
+    assert transport_error.value.__context__ is None
     assert "secret-value" not in str(transport_error.value)
+    assert "secret-value" not in "".join(traceback.format_exception(transport_error.value))
 
-    fake_session.queue_json_errors(ValueError('{"message":"Authorization: Bearer secret-value"}'))
+
+def test_sanitized_json_failure_has_no_raw_body_context(fake_session):
+    """Catches a JSON decoder exception retaining its untrusted raw response through __context__."""
+    token = "secret" + "-value"
+    raw_body = "raw-body" + "-secret"
+    fake_session.queue_json_errors(ValueError(f'{{"message":"{raw_body}"}}'))
     with pytest.raises(GitHubError) as json_error:
-        GitHubClient("secret-value", session=fake_session).search_code("filename:SKILL.md", 1)
+        GitHubClient(token, session=fake_session).search_code("filename:SKILL.md", 1)
     assert json_error.value.__cause__ is None
-    assert "secret-value" not in str(json_error.value)
+    assert json_error.value.__context__ is None
+    formatted = "".join(traceback.format_exception(json_error.value))
+    assert raw_body not in str(json_error.value)
+    assert raw_body not in formatted
+    assert token not in formatted
 
 
 def test_search_caps_requests_at_ten_pages_and_results_at_one_thousand(fake_session):

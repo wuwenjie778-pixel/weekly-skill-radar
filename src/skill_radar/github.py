@@ -119,11 +119,14 @@ class GitHubClient:
     def _get_json(self, path: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         url = f"{self.API_ROOT}{path}"
         for retry_attempt in range(self.MAX_RETRIES + 1):
+            request_failed = False
             try:
                 response = self.session.get(url, params=params, timeout=self.TIMEOUT)
             except requests.RequestException:
+                request_failed = True
+            if request_failed:
                 if retry_attempt == self.MAX_RETRIES:
-                    raise GitHubError("GitHub request failed") from None
+                    raise GitHubError("GitHub request failed")
                 self._sleep(self._retry_delay(retry_attempt + 1))
                 continue
 
@@ -149,10 +152,14 @@ class GitHubClient:
                 continue
             if status >= 400:
                 raise GitHubError(f"GitHub request failed with status {status}")
+            invalid_json = False
             try:
-                return response.json()
+                payload = response.json()
             except ValueError:
-                raise GitHubError("GitHub returned invalid JSON") from None
+                invalid_json = True
+            if invalid_json:
+                raise GitHubError("GitHub returned invalid JSON")
+            return payload
         raise GitHubError("GitHub request failed")
 
     def _retry_delay(self, attempt: int) -> float:
