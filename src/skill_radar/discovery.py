@@ -74,6 +74,7 @@ def collect_repositories(
                 and cached.updated_at == metadata.updated_at
                 and bool(cached.skill_paths)
                 and bool(cached.content_sha256)
+                and _cached_paths_are_reusable(cached.skill_paths, max_skill_files)
             )
             if can_reuse:
                 paths = cached.skill_paths
@@ -157,7 +158,9 @@ def _read_skill_files(
     collected_paths: list[str] = []
     sections: list[str] = []
     remaining = max_content_bytes
-    for path in sorted(paths)[:max_skill_files]:
+    for path in sorted(paths):
+        if len(collected_paths) >= max_skill_files:
+            break
         try:
             text, _ = client.get_text_file(full_name, path, default_branch)
         except GitHubNotFound:
@@ -172,3 +175,12 @@ def _read_skill_files(
         if remaining == 0:
             break
     return tuple(collected_paths), "\n".join(sections)
+
+
+def _cached_paths_are_reusable(paths: Sequence[str], max_skill_files: int) -> bool:
+    """Ensure a cached path set already satisfies the current record contract."""
+    return (
+        len(paths) <= max_skill_files
+        and tuple(sorted(paths)) == tuple(paths)
+        and len(set(paths)) == len(paths)
+    )

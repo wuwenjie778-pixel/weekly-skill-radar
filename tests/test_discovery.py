@@ -270,6 +270,98 @@ def test_collection_reads_at_most_five_sorted_skill_paths(fake_client, candidate
     assert result.records[0].skill_paths == ("a/SKILL.md", "b/SKILL.md", "c/SKILL.md", "d/SKILL.md", "e/SKILL.md")
 
 
+def test_missing_paths_do_not_consume_the_five_successful_file_budget(fake_client, candidate, empty_snapshot):
+    """Catches declaring a candidate absent when its sixth known path is the first live Skill file."""
+    from skill_radar.discovery import collect_repositories
+
+    paths = tuple(f"{number}/SKILL.md" for number in range(1, 7))
+    live_path = "6/SKILL.md"
+    fake_client.files = {live_path: ("live skill", "sha-live")}
+    result = collect_repositories(
+        fake_client,
+        {101: replace(candidate, skill_paths=paths)},
+        empty_snapshot,
+        False,
+        NOW,
+    )
+
+    assert result.records[0].skill_paths == (live_path,)
+    assert result.candidates[101].active is True
+    assert fake_client.search_calls == []
+    assert fake_client.text_file_calls == list(paths)
+
+
+def test_unsorted_cached_paths_fall_back_to_normalized_fresh_collection(fake_client, candidate):
+    """Catches reusing a cache entry whose path order breaks deterministic record output."""
+    from skill_radar.discovery import collect_repositories
+
+    paths = ("a/SKILL.md", "b/SKILL.md")
+    fake_client.files = {path: (path, f"sha-{path}") for path in paths}
+    snapshot = Snapshot(
+        NOW,
+        "config-sha",
+        MappingProxyType(
+            {
+                101: SnapshotEntry(
+                    stars=40,
+                    updated_at=fake_client.metadata.updated_at,
+                    skill_paths=("b/SKILL.md", "a/SKILL.md"),
+                    content_sha256="stale-digest",
+                    category_matches=(),
+                    checked_at="2026-08-02T00:00:00Z",
+                )
+            }
+        ),
+    )
+    result = collect_repositories(
+        fake_client,
+        {101: replace(candidate, skill_paths=paths)},
+        snapshot,
+        True,
+        NOW,
+    )
+
+    assert result.records[0].content_reused is False
+    assert result.records[0].skill_paths == paths
+    assert fake_client.text_file_calls == list(paths)
+
+
+def test_over_limit_cached_paths_fall_back_to_current_collection_bound(fake_client, candidate):
+    """Catches a cache entry bypassing the caller's maximum Skill-file contract."""
+    from skill_radar.discovery import collect_repositories
+
+    paths = tuple(f"{number}/SKILL.md" for number in range(1, 7))
+    fake_client.files = {path: (path, f"sha-{path}") for path in paths}
+    snapshot = Snapshot(
+        NOW,
+        "config-sha",
+        MappingProxyType(
+            {
+                101: SnapshotEntry(
+                    stars=40,
+                    updated_at=fake_client.metadata.updated_at,
+                    skill_paths=paths,
+                    content_sha256="stale-digest",
+                    category_matches=(),
+                    checked_at="2026-08-02T00:00:00Z",
+                )
+            }
+        ),
+    )
+    result = collect_repositories(
+        fake_client,
+        {101: replace(candidate, skill_paths=paths)},
+        snapshot,
+        True,
+        NOW,
+        max_skill_files=3,
+    )
+
+    assert result.records[0].content_reused is False
+    assert result.records[0].skill_paths == paths[:3]
+    assert fake_client.text_file_calls == list(paths[:3])
+
+
 @pytest.mark.parametrize("error", [GitHubAuthError("bad token"), GitHubRateLimitError("retry later")])
 def test_authentication_and_unrecoverable_rate_limits_are_fatal(fake_client, candidate, empty_snapshot, error):
     """Catches fatal GitHub boundary failures being silently converted into per-repo warnings."""
