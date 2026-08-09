@@ -110,19 +110,20 @@ class GitHubClient:
         """Fetch and decode a UTF-8 file from a named repository revision."""
         payload = self._get_json(f"/repos/{full_name}/contents/{path}", {"ref": ref})
         try:
-            content = base64.b64decode(payload["content"], validate=True)
+            encoded = "".join(character for character in payload["content"] if character not in " \t\r\n\f\v")
+            content = base64.b64decode(encoded, validate=True)
             return content.decode("utf-8"), str(payload["sha"])
-        except (KeyError, ValueError, UnicodeDecodeError) as error:
-            raise GitHubError("GitHub returned invalid file content") from error
+        except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+            raise GitHubError("GitHub returned invalid file content") from None
 
     def _get_json(self, path: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
         url = f"{self.API_ROOT}{path}"
         for retry_attempt in range(self.MAX_RETRIES + 1):
             try:
                 response = self.session.get(url, params=params, timeout=self.TIMEOUT)
-            except requests.RequestException as error:
+            except requests.RequestException:
                 if retry_attempt == self.MAX_RETRIES:
-                    raise GitHubError("GitHub request failed") from error
+                    raise GitHubError("GitHub request failed") from None
                 self._sleep(self._retry_delay(retry_attempt + 1))
                 continue
 
@@ -132,11 +133,16 @@ class GitHubClient:
             if status == 404:
                 raise GitHubNotFound("GitHub resource was not found")
             if status in (403, 429) and response.headers.get("x-ratelimit-remaining") == "0":
-                self._wait_for_rate_limit(response.headers)
                 if retry_attempt == self.MAX_RETRIES:
                     raise GitHubRateLimitError("GitHub rate limit did not recover")
+                self._wait_for_rate_limit(response.headers)
                 continue
-            if status in (429, 500, 502, 503, 504):
+            if status == 429:
+                if retry_attempt == self.MAX_RETRIES:
+                    raise GitHubRateLimitError("GitHub rate limit did not recover")
+                self._sleep(self._retry_delay(retry_attempt + 1))
+                continue
+            if status in (500, 502, 503, 504):
                 if retry_attempt == self.MAX_RETRIES:
                     raise GitHubError(f"GitHub request failed with status {status}")
                 self._sleep(self._retry_delay(retry_attempt + 1))
@@ -145,8 +151,8 @@ class GitHubClient:
                 raise GitHubError(f"GitHub request failed with status {status}")
             try:
                 return response.json()
-            except ValueError as error:
-                raise GitHubError("GitHub returned invalid JSON") from error
+            except ValueError:
+                raise GitHubError("GitHub returned invalid JSON") from None
         raise GitHubError("GitHub request failed")
 
     def _retry_delay(self, attempt: int) -> float:
