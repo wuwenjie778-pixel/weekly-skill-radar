@@ -47,6 +47,36 @@ def test_ps_and_ai_alone_do_not_match(sample_record, rules):
     assert "illustrator" not in matches
 
 
+def test_ps_with_raster_context_can_qualify_as_photoshop(sample_record, rules):
+    """Catches ignoring context-gated Photoshop weak-term evidence."""
+    record = replace(
+        sample_record,
+        full_name="example/ps-raster",
+        description="PS",
+    )
+    match = classify_repository(record, rules)["photoshop"]
+    assert match.score == 9
+    assert match.reasons == (
+        '仓库名命中“ps” (+5)',
+        '简介命中“ps” (+4)',
+    )
+
+
+def test_ai_with_vector_context_can_qualify_as_illustrator(sample_record, rules):
+    """Catches ignoring context-gated Illustrator weak-term evidence."""
+    record = replace(
+        sample_record,
+        full_name="example/ai-vector",
+        description="AI",
+    )
+    match = classify_repository(record, rules)["illustrator"]
+    assert match.score == 9
+    assert match.reasons == (
+        '仓库名命中“ai” (+5)',
+        '简介命中“ai” (+4)',
+    )
+
+
 def test_one_repository_can_match_all_professional_categories(sample_record, rules):
     """Catches stopping classification after the first category match."""
     record = replace(sample_record, description="平面设计：Photoshop 修图与 Illustrator 矢量插画")
@@ -77,6 +107,25 @@ def test_short_ascii_term_does_not_match_inside_a_longer_word(sample_record, rul
     """Catches `ps` matching the substring in `compass` when raster supplies context."""
     record = replace(sample_record, description="compass raster utilities")
     assert "photoshop" not in classify_repository(record, rules)
+
+
+def test_skill_path_is_a_classification_source(sample_record, rules):
+    """Catches dropping SKILL.md paths from classifier evidence fields."""
+    record = replace(sample_record, skill_paths=("skills/photoshop/SKILL.md",))
+    match = classify_repository(record, rules)["photoshop"]
+    assert match.score == 6
+    assert match.reasons == ('路径命中“photoshop” (+6)',)
+
+
+def test_skill_text_is_a_classification_source(sample_record, rules):
+    """Catches dropping collected SKILL.md text from classifier evidence fields."""
+    record = replace(sample_record, skill_text="Adobe Illustrator workflow")
+    match = classify_repository(record, rules)["illustrator"]
+    assert match.score == 8
+    assert match.reasons == (
+        '内容命中“adobe illustrator” (+4)',
+        '内容命中“illustrator” (+4)',
+    )
 
 
 def test_reasons_are_ordered_by_field_then_term(sample_record, rules):
