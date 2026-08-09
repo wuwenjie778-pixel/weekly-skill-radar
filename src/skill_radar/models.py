@@ -124,7 +124,7 @@ class RankedRepository:
     url: str
     description: str
     stars: int
-    weekly_growth: int
+    weekly_growth: int | None
     updated_at: str
     skill_paths: tuple[str, ...]
     category_matches: tuple[CategoryMatch, ...]
