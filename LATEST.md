@@ -1,3 +1,3 @@
-# GitHub Skill 每周热门榜
+# GitHub Skill Weekly Ranking
 
-项目尚未建立首期基线。请配置 `PUBLIC_GITHUB_TOKEN` 后手动触发工作流；首次成功运行将生成基线报告。
+No baseline has been established yet, so this project has no ranking data to show. Configure `PUBLIC_GITHUB_TOKEN` and manually run the **Weekly GitHub Skill Ranking** workflow; its first successful run will create the baseline report.
