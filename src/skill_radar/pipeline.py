@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -85,14 +84,15 @@ def validate_outputs(outputs: PreparedOutputs, rankings: Rankings, collection: C
     latest_path = next((path for path in outputs.files if path.name == "LATEST.md"), None)
     if report is None or latest_path is None or outputs.files[latest_path] != report:
         raise ValueError("history report and LATEST.md must be identical")
-    headings = [line for line in report.splitlines() if line.startswith("## ")]
     expected_headings = [f"## {title}" for _, title, _ in _SECTIONS]
-    if headings != expected_headings:
+    lines = report.splitlines()
+    heading_lines = [line for line in lines if line.startswith("## ")]
+    if heading_lines != expected_headings:
         raise ValueError("report must contain exactly the four ranking headings")
+    heading_positions = [lines.index(heading) for heading in expected_headings]
     for index, (name, _, _) in enumerate(_SECTIONS):
-        section_start = report.index(expected_headings[index]) + len(expected_headings[index])
-        section_end = report.index(expected_headings[index + 1], section_start) if index + 1 < len(expected_headings) else len(report)
-        repository_urls = re.findall(r"https://github\.com/[^)\s]+", report[section_start:section_end])
+        section_end = heading_positions[index + 1] if index + 1 < len(heading_positions) else len(lines)
+        repository_urls = _repository_urls_from_table_rows(lines[heading_positions[index] + 1 : section_end])
         if len(repository_urls) > LIMITS[name]:
             raise ValueError(f"rendered {name} exceeds its published limit")
         if len(repository_urls) != len(set(repository_urls)):
@@ -129,3 +129,21 @@ def validate_outputs(outputs: PreparedOutputs, rankings: Rankings, collection: C
         candidate = collection.candidates.get(record.repo_id)
         if candidate is not None and candidate.active and str(record.repo_id) not in repositories:
             raise ValueError("prepared snapshot is missing a collected active repository")
+
+
+def _repository_urls_from_table_rows(lines: list[str]) -> list[str]:
+    """Extract only the repository-link cells emitted by the Markdown renderer."""
+    urls: list[str] = []
+    for line in lines:
+        if not line.startswith("|") or not line.endswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.split("|")[1:-1]]
+        if len(cells) < 2 or not cells[0].isdigit():
+            continue
+        repository_cell = cells[1]
+        if not repository_cell.startswith("[") or "](" not in repository_cell or not repository_cell.endswith(")"):
+            continue
+        url = repository_cell.rsplit("](", 1)[1][:-1]
+        if url.startswith("https://github.com/"):
+            urls.append(url)
+    return urls

@@ -128,6 +128,30 @@ def test_changed_category_config_disables_cached_content_reuse(project_root: Pat
     assert entry["content_sha256"] == sha256("<!-- path: SKILL.md -->\nIllustrator workflow".encode("utf-8")).hexdigest()
 
 
+def test_failed_config_transition_forces_fresh_classification_on_recovery(project_root: Path, fake_client: FakeGitHubClient):
+    """Catches an A-classified carry-forward entry becoming trusted as config B state."""
+    import yaml
+
+    from skill_radar.pipeline import run_pipeline
+
+    run_pipeline(project_root, "public-token", now=BEIJING_NOW, client=fake_client)
+    categories = project_root / "config/categories.yml"
+    rules = yaml.safe_load(categories.read_text(encoding="utf-8"))
+    rules["categories"]["photoshop"]["threshold"] = 100
+    categories.write_text(yaml.safe_dump(rules, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    fake_client.fail_collection = GitHubError("temporary")
+
+    run_pipeline(project_root, "public-token", now=BEIJING_NOW, client=fake_client)
+
+    carried = json.loads((project_root / "data/snapshot.json").read_text(encoding="utf-8"))
+    assert carried["classification_config_sha256"].startswith("stale:")
+    fake_client.fail_collection = None
+    run_pipeline(project_root, "public-token", now=BEIJING_NOW, client=fake_client)
+
+    recovered = json.loads((project_root / "data/snapshot.json").read_text(encoding="utf-8"))["repositories"]["101"]
+    assert all(match["category"] != "photoshop" for match in recovered["category_matches"])
+
+
 def test_validation_rejects_duplicate_repository_links_in_rendered_section(tmp_path: Path):
     """Catches trusting ranking inputs when the prepared report itself has duplicate rows."""
     from skill_radar.discovery import CollectionResult
@@ -140,7 +164,17 @@ def test_validation_rejects_duplicate_repository_links_in_rendered_section(tmp_p
         "## Photoshop 专项 Skill Top 5",
         "## Illustrator 专项 Skill Top 5",
     )
-    report = "\n".join((headings[0], "[one](https://github.com/owner/repo)", "[two](https://github.com/owner/repo)", *headings[1:], ""))
+    report = "\n".join(
+        (
+            headings[0],
+            "| 排名 | 仓库 |",
+            "| --- | --- |",
+            "| 1 | [one](https://github.com/owner/repo) |",
+            "| 2 | [two](https://github.com/owner/repo) |",
+            *headings[1:],
+            "",
+        )
+    )
     files = {
         tmp_path / "reports" / "today.md": report,
         tmp_path / "LATEST.md": report,
@@ -150,3 +184,31 @@ def test_validation_rejects_duplicate_repository_links_in_rendered_section(tmp_p
 
     with pytest.raises(ValueError, match="duplicate"):
         validate_outputs(PreparedOutputs(files, tmp_path / "reports" / "today.md"), Rankings(True, (), (), (), ()), CollectionResult((), {}, ()))
+
+
+def test_validation_ignores_github_urls_and_headings_inside_table_descriptions(tmp_path: Path):
+    """Catches prose being mistaken for a repository cell or a structural heading."""
+    from skill_radar.discovery import CollectionResult
+    from skill_radar.pipeline import validate_outputs
+    from skill_radar.report import _SECTIONS
+    from skill_radar.storage import PreparedOutputs
+
+    headings = [f"## {title}" for _, title, _ in _SECTIONS]
+    report = "\n".join(
+        (
+            headings[0],
+            "| 排名 | 仓库 | 简介 |",
+            "| --- | --- | --- |",
+            f"| 1 | [repo](https://github.com/owner/repo) | see https://github.com/owner/repo after {headings[1]} |",
+            *headings[1:],
+            "",
+        )
+    )
+    files = {
+        tmp_path / "reports" / "today.md": report,
+        tmp_path / "LATEST.md": report,
+        tmp_path / "data" / "candidates.json": '{"schema_version": 1, "candidates": {}}',
+        tmp_path / "data" / "snapshot.json": '{"schema_version": 1, "repositories": {}}',
+    }
+
+    validate_outputs(PreparedOutputs(files, tmp_path / "reports" / "today.md"), Rankings(True, (), (), (), ()), CollectionResult((), {}, ()))

@@ -15,6 +15,7 @@ from .report import render_report
 
 
 SCHEMA_VERSION = 1
+STALE_CLASSIFICATION_CONFIG_SHA256 = "stale:carried-entry"
 
 
 class StateError(ValueError):
@@ -114,6 +115,11 @@ def prepare_outputs(
         for repo_id, entry in previous_snapshot.repositories.items()
         if collection.candidates.get(repo_id) is not None and collection.candidates[repo_id].active
     }
+    collected_repo_ids = {record.repo_id for record in collection.records}
+    carried_prior_config_entry = (
+        previous_snapshot.classification_config_sha256 != classification_config_sha256
+        and any(repo_id not in collected_repo_ids for repo_id in repositories)
+    )
     for record in collection.records:
         repositories[record.repo_id] = SnapshotEntry(
             stars=record.stars,
@@ -124,7 +130,11 @@ def prepare_outputs(
             checked_at=generated_utc,
         )
 
-    snapshot = Snapshot(generated_utc, classification_config_sha256, repositories)
+    snapshot = Snapshot(
+        generated_utc,
+        STALE_CLASSIFICATION_CONFIG_SHA256 if carried_prior_config_entry else classification_config_sha256,
+        repositories,
+    )
     active_count = sum(candidate.active for candidate in collection.candidates.values())
     stats = RunStats(
         observed_from=previous_snapshot.captured_at or generated_utc,
