@@ -78,11 +78,30 @@ def test_pipeline_writes_all_outputs_after_success(project_root: Path, fake_clie
     """Catches publishing an incomplete run instead of the complete report/state set."""
     from skill_radar.pipeline import run_pipeline
 
+    candidate_path = project_root / "data/candidates.json"
+    seeded_candidates = candidate_path.read_bytes()
     result = run_pipeline(project_root, "public-token", now=BEIJING_NOW, client=fake_client)
 
     assert result.report_path == project_root / "reports/2026-08-10.md"
     assert result.report_path.read_text(encoding="utf-8") == (project_root / "LATEST.md").read_text(encoding="utf-8")
     assert json.loads((project_root / "data/snapshot.json").read_text(encoding="utf-8"))["captured_at"] == "2026-08-09T16:30:00Z"
+    candidates = json.loads(candidate_path.read_text(encoding="utf-8"))
+    assert candidate_path.read_bytes() != seeded_candidates
+    assert candidates == {
+        "schema_version": 1,
+        "candidates": {
+            "101": {
+                "repo_id": 101,
+                "full_name": "owner/skill-repo",
+                "url": "https://github.com/owner/skill-repo",
+                "skill_paths": ["SKILL.md"],
+                "discovered_at": "2026-08-09T16:30:00+00:00",
+                "last_seen_at": "2026-08-09T16:30:00+00:00",
+                "last_checked_at": "2026-08-09T16:30:00+00:00",
+                "active": True,
+            }
+        },
+    }
     assert result.collected_count == 1
 
 
