@@ -25,6 +25,10 @@ class GitHubNotFound(GitHubError):
     """GitHub could not find the requested public resource."""
 
 
+class GitHubPublicOnlyError(GitHubNotFound):
+    """GitHub returned a repository outside the public-only boundary."""
+
+
 class GitHubRateLimitError(GitHubError):
     """GitHub's rate-limit reset is too far away for this job to wait."""
 
@@ -74,6 +78,8 @@ class GitHubClient:
             items = payload.get("items", [])
             for item in items:
                 repository = item["repository"]
+                if not _is_public_repository(repository):
+                    continue
                 key = (int(repository["id"]), str(item["path"]))
                 if key in seen:
                     continue
@@ -95,6 +101,8 @@ class GitHubClient:
     def get_repository(self, full_name: str) -> RepositoryMetadata:
         """Fetch the public repository metadata used in rankings."""
         payload = self._get_json(f"/repos/{full_name}")
+        if not _is_public_repository(payload):
+            raise GitHubPublicOnlyError("GitHub repository is not public")
         return RepositoryMetadata(
             repo_id=int(payload["id"]),
             full_name=str(payload["full_name"]),
@@ -174,3 +182,9 @@ class GitHubClient:
         if delay > self.MAX_RATE_LIMIT_WAIT_SECONDS:
             raise GitHubRateLimitError("GitHub rate limit reset is too far away")
         self._sleep(delay)
+
+
+def _is_public_repository(payload: Mapping[str, Any]) -> bool:
+    return payload.get("private") is not True and (
+        "visibility" not in payload or payload["visibility"] == "public"
+    )

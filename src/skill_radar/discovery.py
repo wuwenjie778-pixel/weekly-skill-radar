@@ -60,14 +60,41 @@ def collect_repositories(
     updated_candidates = dict(candidates)
     records: list[RepositoryRecord] = []
     warnings: list[str] = []
+    processed_repo_ids: set[int] = set()
 
     for repo_id in sorted(candidates):
         candidate = candidates[repo_id]
         if not candidate.active:
             continue
+        current_repo_id = repo_id
         try:
             metadata = client.get_repository(candidate.full_name)
-            cached = previous_snapshot.repositories.get(repo_id)
+            current_repo_id = metadata.repo_id
+            if current_repo_id in processed_repo_ids:
+                if current_repo_id != repo_id:
+                    updated_candidates.pop(repo_id, None)
+                continue
+            processed_repo_ids.add(current_repo_id)
+            if current_repo_id != repo_id:
+                current_candidate = updated_candidates.get(current_repo_id)
+                updated_candidates.pop(repo_id, None)
+                if current_candidate is None:
+                    candidate = replace(candidate, repo_id=current_repo_id)
+                else:
+                    candidate = Candidate(
+                        repo_id=current_repo_id,
+                        full_name=metadata.full_name,
+                        url=metadata.url,
+                        skill_paths=tuple(
+                            sorted(set(candidate.skill_paths) | set(current_candidate.skill_paths))
+                        ),
+                        discovered_at=min(candidate.discovered_at, current_candidate.discovered_at),
+                        last_seen_at=max(candidate.last_seen_at, current_candidate.last_seen_at),
+                        last_checked_at=max(candidate.last_checked_at, current_candidate.last_checked_at),
+                        active=candidate.active or current_candidate.active,
+                    )
+                updated_candidates[current_repo_id] = candidate
+            cached = previous_snapshot.repositories.get(current_repo_id)
             can_reuse = (
                 allow_cached_classification
                 and cached is not None
@@ -94,7 +121,9 @@ def collect_repositories(
                         f"repo:{candidate.full_name} filename:SKILL.md", max_pages=1
                     )
                     if not rediscovered:
-                        updated_candidates[repo_id] = replace(candidate, active=False, last_checked_at=now)
+                        updated_candidates[current_repo_id] = replace(
+                            candidate, active=False, last_checked_at=now
+                        )
                         continue
                     paths, skill_text = _read_skill_files(
                         client,
@@ -111,13 +140,15 @@ def collect_repositories(
         except (GitHubAuthError, GitHubRateLimitError):
             raise
         except GitHubNotFound:
-            updated_candidates[repo_id] = replace(candidate, active=False, last_checked_at=now)
+            updated_candidates[current_repo_id] = replace(
+                candidate, active=False, last_checked_at=now
+            )
             continue
         except GitHubError as error:
             warnings.append(f"{candidate.full_name}: {error}")
             continue
 
-        updated_candidates[repo_id] = Candidate(
+        updated_candidates[current_repo_id] = Candidate(
             repo_id=metadata.repo_id,
             full_name=metadata.full_name,
             url=metadata.url,

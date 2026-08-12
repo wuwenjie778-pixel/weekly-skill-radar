@@ -1,9 +1,16 @@
 from dataclasses import replace
+from datetime import datetime, timezone
 from types import MappingProxyType
 
 import pytest
 
-from skill_radar.github import GitHubAuthError, GitHubError, GitHubNotFound, GitHubRateLimitError
+from skill_radar.github import (
+    GitHubAuthError,
+    GitHubError,
+    GitHubNotFound,
+    GitHubPublicOnlyError,
+    GitHubRateLimitError,
+)
 from skill_radar.models import Candidate, RepositoryMetadata, SearchHit, Snapshot, SnapshotEntry
 
 
@@ -210,6 +217,85 @@ def test_reuses_classification_when_repository_is_unchanged(fake_client, candida
     assert fake_client.text_file_calls == []
 
 
+def test_collection_migrates_recreated_repository_id_and_persisted_candidate_key(
+    fake_client, candidate, tmp_path
+):
+    """Catches a recreated same-name repository retaining its deleted repository ID key."""
+    from skill_radar.discovery import collect_repositories
+    from skill_radar.ranking import build_rankings
+    from skill_radar.storage import commit_outputs, load_candidates, prepare_outputs
+
+    new_repo_id = 202
+    fake_client.metadata = replace(fake_client.metadata, repo_id=new_repo_id)
+    snapshot = Snapshot(
+        NOW,
+        "config-sha",
+        MappingProxyType(
+            {
+                new_repo_id: SnapshotEntry(
+                    stars=40,
+                    updated_at=fake_client.metadata.updated_at,
+                    skill_paths=("SKILL.md",),
+                    content_sha256="recreated-digest",
+                    category_matches=(),
+                    checked_at="2026-08-02T00:00:00Z",
+                )
+            }
+        ),
+    )
+
+    result = collect_repositories(fake_client, {candidate.repo_id: candidate}, snapshot, True, NOW)
+
+    assert list(result.candidates) == [new_repo_id]
+    assert result.candidates[new_repo_id].repo_id == new_repo_id
+    assert result.records[0].repo_id == new_repo_id
+    assert result.records[0].content_reused is True
+    assert fake_client.text_file_calls == []
+
+    rankings = build_rankings(result.records, snapshot.stars_by_repo, {})
+    outputs = prepare_outputs(
+        tmp_path,
+        datetime(2026, 8, 9, tzinfo=timezone.utc),
+        "config-sha",
+        snapshot,
+        result,
+        {},
+        rankings,
+    )
+    commit_outputs(outputs)
+    assert load_candidates(tmp_path / "data" / "candidates.json") == result.candidates
+
+
+def test_id_migration_does_not_collect_a_replacement_candidate_twice(
+    fake_client, candidate, empty_snapshot
+):
+    """Catches old and newly discovered IDs producing duplicate records in one run."""
+    from skill_radar.discovery import collect_repositories
+
+    new_repo_id = 202
+    fake_client.metadata = replace(fake_client.metadata, repo_id=new_repo_id)
+    replacement = replace(
+        candidate,
+        repo_id=new_repo_id,
+        skill_paths=("new/SKILL.md",),
+        last_seen_at=NOW,
+    )
+    fake_client.files = {"new/SKILL.md": ("replacement skill", "replacement-sha")}
+
+    result = collect_repositories(
+        fake_client,
+        {candidate.repo_id: candidate, new_repo_id: replacement},
+        empty_snapshot,
+        False,
+        NOW,
+    )
+
+    assert list(result.candidates) == [new_repo_id]
+    assert [record.repo_id for record in result.records] == [new_repo_id]
+    assert result.records[0].skill_paths == ("new/SKILL.md",)
+    assert result.candidates[new_repo_id].last_seen_at == NOW
+
+
 def test_confirmed_missing_repository_marks_candidate_inactive(fake_client, candidate, empty_snapshot):
     """Catches a confirmed 404 repository being retained as an active candidate."""
     from skill_radar.discovery import collect_repositories
@@ -219,6 +305,20 @@ def test_confirmed_missing_repository_marks_candidate_inactive(fake_client, cand
 
     assert result.candidates[101].active is False
     assert result.candidates[101].last_checked_at == NOW
+    assert result.records == ()
+    assert result.warnings == ()
+
+
+def test_non_public_repository_metadata_is_inactivated_without_a_record_or_warning(
+    fake_client, candidate, empty_snapshot
+):
+    """Catches a private repository escaping collection after metadata validation."""
+    from skill_radar.discovery import collect_repositories
+
+    fake_client.fail_repository_with(GitHubPublicOnlyError("GitHub repository is not public"))
+    result = collect_repositories(fake_client, {101: candidate}, empty_snapshot, False, NOW)
+
+    assert result.candidates[101].active is False
     assert result.records == ()
     assert result.warnings == ()
 

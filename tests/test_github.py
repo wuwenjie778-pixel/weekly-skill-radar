@@ -154,6 +154,26 @@ def test_search_code_paginates_deduplicates_and_uses_per_page_100(fake_session):
     ]
 
 
+@pytest.mark.parametrize(
+    ("private", "visibility"),
+    [(True, "public"), (False, "internal")],
+)
+def test_search_code_rejects_non_public_repository_hits(fake_session, private, visibility):
+    """Catches a broadly scoped token admitting a non-public code-search result."""
+    item = deepcopy(fake_session._search_pages[1]["items"][0])
+    item["repository"]["private"] = private
+    item["repository"]["visibility"] = visibility
+    fake_session._search_pages = {
+        1: {"total_count": 1, "incomplete_results": False, "items": [item]},
+    }
+
+    hits = GitHubClient("public-token", session=fake_session).search_code(
+        "filename:SKILL.md", max_pages=1
+    )
+
+    assert hits == []
+
+
 def test_search_stops_after_the_first_short_page(fake_session):
     """Catches needless requests after GitHub has returned fewer than one page of results."""
     GitHubClient("public-token", session=fake_session).search_code("filename:SKILL.md", max_pages=10)
@@ -182,6 +202,22 @@ def test_get_repository_maps_the_complete_rest_response(fake_session):
     assert repository.stars == 42
     assert repository.updated_at == "2026-08-08T00:00:00Z"
     assert repository.default_branch == "main"
+
+
+@pytest.mark.parametrize(
+    ("private", "visibility"),
+    [(True, "public"), (False, "private")],
+)
+def test_get_repository_rejects_non_public_metadata(fake_session, private, visibility):
+    """Catches non-public metadata crossing the public-only client boundary."""
+    fake_session._repository["private"] = private
+    fake_session._repository["visibility"] = visibility
+
+    with pytest.raises(GitHubError) as error:
+        GitHubClient("public-token", session=fake_session).get_repository("owner/one")
+
+    assert type(error.value).__name__ == "GitHubPublicOnlyError"
+    assert "owner/one" not in str(error.value)
 
 
 def test_get_text_file_decodes_base64_and_sends_ref(fake_session):
