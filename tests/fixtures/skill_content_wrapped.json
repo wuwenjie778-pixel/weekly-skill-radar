@@ -1,0 +1,14 @@
+{
+  "type": "file",
+  "encoding": "base64",
+  "size": 38,
+  "name": "SKILL.md",
+  "path": "SKILL.md",
+  "content": "LS0tCm5hbWU6IGZpeHR1cmUtc2tpbGwK\nLS0tCkhlbGxvLCBza2lsbCEK\n",
+  "sha": "fixture-sha",
+  "url": "https://api.github.com/repos/owner/one/contents/SKILL.md?ref=main",
+  "git_url": "https://api.github.com/repos/owner/one/git/blobs/fixture-sha",
+  "html_url": "https://github.com/owner/one/blob/main/SKILL.md",
+  "download_url": "https://raw.githubusercontent.com/owner/one/main/SKILL.md",
+  "_links": {"self": "https://api.github.com/repos/owner/one/contents/SKILL.md?ref=main", "git": "https://api.github.com/repos/owner/one/git/blobs/fixture-sha", "html": "https://github.com/owner/one/blob/main/SKILL.md"}
+}

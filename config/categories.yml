@@ -1,0 +1,28 @@
+categories:
+  art_design:
+    name_zh: "艺术与设计"
+    threshold: 6
+    strong_bonus: 3
+    strong_terms: ["视觉设计", "平面设计", "插画", "art", "design"]
+    weak_terms: ["ui", "ux"]
+    context_terms: ["creative", "visual"]
+    exclude_terms: []
+    weights: {name: 5, description: 4, topics: 4, path: 3, content: 1}
+  photoshop:
+    name_zh: "Photoshop"
+    threshold: 6
+    strong_bonus: 3
+    strong_terms: ["photoshop", "adobe photoshop", "psd"]
+    weak_terms: ["ps"]
+    context_terms: ["image editing", "raster"]
+    exclude_terms: []
+    weights: {name: 5, description: 4, topics: 4, path: 3, content: 1}
+  illustrator:
+    name_zh: "Illustrator"
+    threshold: 6
+    strong_bonus: 3
+    strong_terms: ["illustrator", "adobe illustrator", "矢量"]
+    weak_terms: ["ai"]
+    context_terms: ["vector", "drawing"]
+    exclude_terms: []
+    weights: {name: 5, description: 4, topics: 4, path: 3, content: 1}

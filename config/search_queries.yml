@@ -1,0 +1,9 @@
+queries:
+  - "filename:SKILL.md"
+  - "agent filename:SKILL.md"
+  - "codex filename:SKILL.md"
+  - "claude filename:SKILL.md"
+  - "design filename:SKILL.md"
+  - "art filename:SKILL.md"
+  - "photoshop filename:SKILL.md"
+  - "illustrator filename:SKILL.md"
