@@ -62,11 +62,32 @@ def test_operator_guide_covers_safe_first_run_and_recovery():
         assert phrase in text
 
 
-def test_latest_pre_run_notice_has_no_fabricated_ranking_rows():
-    """Catches publishing placeholder rankings before the first successful run."""
+def test_latest_is_valid_before_or_after_the_first_successful_run():
+    """Catches either fabricated pre-run rows or an invalid generated ranking."""
     text = (ROOT / "LATEST.md").read_text(encoding="utf-8")
+    lines = text.splitlines()
+    ranking_rows = [line for line in lines if line.startswith("|") and line.split("|", 2)[1].strip().isdigit()]
 
-    assert "baseline" in text.lower()
-    assert "PUBLIC_GITHUB_TOKEN" in text
-    assert "manually" in text.lower()
-    assert "|" not in text
+    if not ranking_rows:
+        assert "baseline" in text.lower()
+        assert "PUBLIC_GITHUB_TOKEN" in text
+        assert "manually" in text.lower()
+        assert "|" not in text
+        return
+
+    sections = (
+        ("## 全站热门 Skill Top 10", 10),
+        ("## 艺术设计相关 Skill Top 10", 10),
+        ("## Photoshop 专项 Skill Top 5", 5),
+        ("## Illustrator 专项 Skill Top 5", 5),
+    )
+    heading_positions = [lines.index(heading) for heading, _ in sections]
+    assert heading_positions == sorted(heading_positions)
+    for index, (_, limit) in enumerate(sections):
+        end = heading_positions[index + 1] if index + 1 < len(sections) else len(lines)
+        section_rows = [
+            line
+            for line in lines[heading_positions[index] + 1 : end]
+            if line.startswith("|") and line.split("|", 2)[1].strip().isdigit()
+        ]
+        assert 0 < len(section_rows) <= limit
