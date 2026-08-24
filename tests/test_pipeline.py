@@ -32,8 +32,10 @@ class FakeGitHubClient:
         )
         self.fail_discovery: Exception | None = None
         self.fail_collection: Exception | None = None
+        self.search_requests: list[tuple[str, int]] = []
 
     def search_code(self, query: str, max_pages: int = 10) -> list[SearchHit]:
+        self.search_requests.append((query, max_pages))
         if self.fail_discovery is not None:
             raise self.fail_discovery
         if query.startswith("repo:"):
@@ -103,6 +105,19 @@ def test_pipeline_writes_all_outputs_after_success(project_root: Path, fake_clie
         },
     }
     assert result.collected_count == 1
+
+
+def test_pipeline_bounds_each_discovery_query_to_one_best_match_page(
+    project_root: Path, fake_client: FakeGitHubClient
+):
+    """Catches the weekly job exhausting search/core quotas on multi-million-result queries."""
+    from skill_radar.pipeline import run_pipeline
+
+    run_pipeline(project_root, "public-token", now=BEIJING_NOW, client=fake_client)
+
+    discovery_requests = [request for request in fake_client.search_requests if not request[0].startswith("repo:")]
+    assert discovery_requests
+    assert {max_pages for _, max_pages in discovery_requests} == {1}
 
 
 def test_fatal_discovery_failure_preserves_previous_outputs(project_root: Path, fake_client: FakeGitHubClient):

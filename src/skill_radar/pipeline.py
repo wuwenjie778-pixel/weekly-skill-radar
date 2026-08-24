@@ -18,6 +18,8 @@ from .ranking import LIMITS, build_rankings
 from .report import _SECTIONS
 from .storage import SCHEMA_VERSION, PreparedOutputs, commit_outputs, load_candidates, load_snapshot, prepare_outputs
 
+DISCOVERY_MAX_PAGES = 1
+
 
 @dataclass(frozen=True)
 class RunResult:
@@ -46,7 +48,13 @@ def run_pipeline(
     previous_candidates = load_candidates(root / "data" / "candidates.json")
     previous_snapshot = load_snapshot(root / "data" / "snapshot.json")
     observed_at = generated_at.isoformat()
-    candidates = discover_candidates(github, queries, previous_candidates, observed_at)
+    candidates = discover_candidates(
+        github,
+        queries,
+        previous_candidates,
+        observed_at,
+        max_pages=DISCOVERY_MAX_PAGES,
+    )
     allow_cached = previous_snapshot.classification_config_sha256 == config_sha
     collection = collect_repositories(github, candidates, previous_snapshot, allow_cached, observed_at)
     matches = _classify_records(collection, previous_snapshot, rules)
