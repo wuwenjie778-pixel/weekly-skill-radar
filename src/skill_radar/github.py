@@ -38,6 +38,7 @@ class GitHubClient:
     TIMEOUT = (5, 30)
     MAX_RETRIES = 3
     MAX_RATE_LIMIT_WAIT_SECONDS = 300
+    RATE_LIMIT_RESET_BUFFER_SECONDS = 1
 
     def __init__(
         self,
@@ -181,7 +182,7 @@ class GitHubClient:
         delay = max(0.0, reset_at - self._clock())
         if delay > self.MAX_RATE_LIMIT_WAIT_SECONDS:
             raise GitHubRateLimitError("GitHub rate limit reset is too far away")
-        self._sleep(delay)
+        self._sleep(delay + self.RATE_LIMIT_RESET_BUFFER_SECONDS)
 
 
 def _is_public_repository(payload: Mapping[str, Any]) -> bool:

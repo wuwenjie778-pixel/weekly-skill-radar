@@ -294,8 +294,8 @@ def test_exhausted_server_error_raises_generic_error_without_terminal_sleep(fake
     assert len(fake_session.requests) == 4
 
 
-def test_rate_limit_waits_only_when_reset_is_within_five_minutes(fake_session):
-    """Catches rate-limit handling that sleeps for an unbounded reset time."""
+def test_rate_limit_waits_past_the_integer_reset_boundary(fake_session):
+    """Catches retries racing GitHub's whole-second rate-limit reset boundary."""
     sleeps: list[float] = []
     fake_session.queue_statuses(403, 200, headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset": "1120"})
 
@@ -303,7 +303,7 @@ def test_rate_limit_waits_only_when_reset_is_within_five_minutes(fake_session):
         "filename:SKILL.md", max_pages=1
     )
 
-    assert sleeps == [120]
+    assert sleeps == [121]
     assert len(fake_session.requests) == 2
 
 
@@ -330,7 +330,7 @@ def test_exhausted_rate_limit_reset_does_not_sleep_after_terminal_response(fake_
             "filename:SKILL.md", max_pages=1
         )
 
-    assert sleeps == [120, 120, 120]
+    assert sleeps == [121, 121, 121]
     assert len(fake_session.requests) == 4
 
 
