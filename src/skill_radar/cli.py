@@ -7,6 +7,7 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
+from .github import GitHubError
 from .pipeline import run_pipeline
 
 
@@ -21,6 +22,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     try:
         result = run_pipeline(arguments.root, token)
+    except GitHubError as error:
+        print(f"Unable to generate the weekly skill radar report. {type(error).__name__}: {error}", file=__import__("sys").stderr)
+        return 1
     except Exception:
         print("Unable to generate the weekly skill radar report.", file=__import__("sys").stderr)
         return 1
