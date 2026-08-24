@@ -1,3 +1,4 @@
+# GitHub Actions entry point for the weekly public-skill ranking.
 name: Weekly GitHub Skill Ranking
 
 on:
